@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import mmap
 import sys
 
@@ -18,7 +20,7 @@ def jmpoffset(word):
   rv = word & 511
   if (word >> 9) & 1:
     rv = rv - 512
-  return rv * 2
+  return rv * 2 + 2
 
 jmp_conditions = {
   0b000: 'jnz',
@@ -90,14 +92,14 @@ def decode_addr(As, reg, stream):
 
 
 def print_insn(cnt, op, addr1, addr2=None):
-  rv = "{cnt:7X} {op} {addr1}".format(cnt=cnt, op=op, addr1=addr1)
+  rv = "{cnt:7X} {op:6} {addr1}".format(cnt=cnt, op=op, addr1=addr1)
   if addr2:
     rv += ", {addr2}".format(addr2=addr2)
   print rv
   return rv
 
 
-def disassemble(stream):
+def disassemble(stream, depth=None):
   insn_count = 0
 
   while True:
@@ -106,7 +108,6 @@ def disassemble(stream):
       break
     ins = wordval(raw_word)
  
-    # print "{:016b}".format(ins)
     if (ins >> 10) == 0b000100:
       # single-operand arithmetic
       opcode = (ins >> 6) & 0b1111
@@ -137,16 +138,25 @@ def disassemble(stream):
       dst = ins & 0b1111
 
       opname = double_operand[opcode]
-      fmt = {
-        'count': insn_count,
-        'op': opname + ".b" if Bw else opname,
-        'src': decode_addr(As, src, stream),
-        'dst': decode_addr(Ad, dst, stream),
-      }
-      insn_count += 1
-      print "{count:7X} {op} {src}, {dst}".format(**fmt)
+      print_insn( 
+        cnt=insn_count,
+        op=opname + ".b" if Bw else opname,
+        addr1=decode_addr(As, src, stream),
+        addr2= decode_addr(Ad, dst, stream),
+      )
 
-with open(sys.argv[1], 'r') as f:
-  m = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-  disassemble(m)
+    if insn_count == depth:
+      break
+    insn_count += 1
+
+if __name__ == '__main__':
+  import argparse
+  parser = argparse.ArgumentParser()
+  parser.add_argument('tracefile', help='instruction trace file')
+  parser.add_argument("--depth", help='terminate disassembly at depth', type=int)
+  args = parser.parse_args()
+  
+  with open(args.tracefile, 'r') as f:
+    m = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+    disassemble(m, depth=args.depth)
 
