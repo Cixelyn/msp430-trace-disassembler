@@ -3,6 +3,19 @@
 import mmap
 import sys
 
+class StreamWrapper(object):
+  def __init__(self, stream):
+    self.stream = stream
+    self.read_buffer = []
+  def read(self, num_bytes):
+    rv = self.stream.read(num_bytes)
+    self.read_buffer.append(rv)
+    return rv
+  def dump_buffer(self):
+    rv = self.read_buffer
+    self.read_buffer = []
+    return rv
+
 def regname(reg):
   if reg == 0: return 'PC'
   elif reg == 1: return 'SP'
@@ -91,8 +104,9 @@ def decode_addr(As, reg, stream):
     raise Exception("unknown instruction, As %s" % As)
 
 
-def print_insn(cnt, op, addr1, addr2=None):
-  rv = "{cnt:7X} {op:6} {addr1}".format(cnt=cnt, op=op, addr1=addr1)
+def print_insn(cnt, words, op, addr1, addr2=None):
+  words = ' '.join(map(hexstr, words))
+  rv = "{cnt:7X}: {words:14} {op:6} {addr1}".format(cnt=cnt, words=words, op=op, addr1=addr1)
   if addr2:
     rv += ", {addr2}".format(addr2=addr2)
   print rv
@@ -118,6 +132,7 @@ def disassemble(stream, depth=None):
         cnt=insn_count,
         op=single_operand[opcode],
         addr1=decode_addr(As, src, stream),
+        words=stream.dump_buffer()
       )
 
     elif (ins >> 13) == 0b001:
@@ -127,6 +142,7 @@ def disassemble(stream, depth=None):
         cnt=insn_count,
         op=jmp_conditions[cond],
         addr1="{:+X}".format(jmpoffset(ins)),
+        words=stream.dump_buffer()
       )
     else:
       # two-operand arithmetic
@@ -143,6 +159,7 @@ def disassemble(stream, depth=None):
         op=opname + ".b" if Bw else opname,
         addr1=decode_addr(As, src, stream),
         addr2= decode_addr(Ad, dst, stream),
+        words=stream.dump_buffer()
       )
 
     if insn_count == depth:
@@ -158,5 +175,5 @@ if __name__ == '__main__':
   
   with open(args.tracefile, 'r') as f:
     m = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-    disassemble(m, depth=args.depth)
+    disassemble(StreamWrapper(m), depth=args.depth)
 
