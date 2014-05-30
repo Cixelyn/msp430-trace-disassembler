@@ -133,6 +133,12 @@ def disassemble(stream, depth=None):
         op='nop',
         words=stream.dump_buffer(),
       )
+    elif ins == 0x4130:
+      print_insn(
+        cnt=insn_count,
+        op='ret',
+        words=stream.dump_buffer(),
+      )
     elif (ins >> 10) == 0b000100:
       # single-operand arithmetic
       opcode = (ins >> 6) & 0b1111
