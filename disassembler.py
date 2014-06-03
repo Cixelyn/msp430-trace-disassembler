@@ -105,9 +105,38 @@ def decode_addr(As, reg, stream, dst=False):
   else:
     raise Exception("unknown instruction, As %s" % As)
 
+rewrite_table = [
+  (('mov', '@SP+', 'PC'), ('ret', None, None)),
+  (('mov', '@SP+', None), ('pop', 'ADDR2', None)),
+  (('mov', None, 'CG'), ('nop', None, None)),
+  (('mov', None, 'PC'), ('br', 'ADDR1', None)),
+  (('cmp', '#0', None), ('tst', 'ADDR2', None)),
+  (('cmp.b', '#0', None), ('tst.b', 'ADDR2', None)),
+  (('mov', '#0', None), ('clr', 'ADDR2', None)),
+  (('mov.b', '#0', None), ('clr.b', 'ADDR2', None)),
+]
 
 def print_insn(cnt, words, op, addr1=None, addr2=None):
   words = ' '.join(map(hexstr, words))
+
+  for orig_ins, new_ins in rewrite_table:
+    ra, rb, rc = orig_ins
+    na, nb, nc = new_ins
+    if (ra is None or ra == op) and \
+        (rb is None or rb == addr1) and \
+        (rc is None or rc == addr2):
+
+      op = na
+
+      if nb == 'ADDR1': addr1 = addr1
+      elif nb == 'ADDR2': addr1 = addr2
+      else: addr1 = nb
+
+      if nc == 'ADDR1': addr2 = addr1
+      elif nc == 'ADDR2': addr2 = addr2
+      else: addr2 = nc
+
+
   rv = "{cnt:7X}: {words:14} {op:6}".format(cnt=cnt, words=words, op=op)
   if addr1:
     rv +=  " {addr1}".format(addr1=addr1)
@@ -126,26 +155,13 @@ def disassemble(stream, depth=None):
       break
     ins = wordval(raw_word)
 
-    if ins == 0x4303:
-      # special-cased substitute instructions
-      print_insn(
-        cnt=insn_count,
-        op='nop',
-        words=stream.dump_buffer(),
-      )
-    elif ins == 0x4130:
-      print_insn(
-        cnt=insn_count,
-        op='ret',
-        words=stream.dump_buffer(),
-      )
-    elif (ins >> 10) == 0b000100:
+    if (ins >> 10) == 0b000100:
       # single-operand arithmetic
       opcode = (ins >> 6) & 0b1111
       As = (ins >> 4) & 0b11
       src = ins & 0b1111
-     
-      print_insn( 
+
+      print_insn(
         cnt=insn_count,
         op=single_operand[opcode],
         addr1=decode_addr(As, src, stream),
@@ -171,7 +187,7 @@ def disassemble(stream, depth=None):
       dst = ins & 0b1111
 
       opname = double_operand[opcode]
-      print_insn( 
+      print_insn(
         cnt=insn_count,
         op=opname + ".b" if Bw else opname,
         addr1=decode_addr(As, src, stream),
