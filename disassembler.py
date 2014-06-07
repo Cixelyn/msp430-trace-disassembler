@@ -116,7 +116,7 @@ rewrite_table = [
   (('mov.b', '#0', None), ('clr.b', 'ADDR2', None)),
 ]
 
-def print_insn(cnt, words, op, addr1=None, addr2=None):
+def print_insn(cnt, words, op, addr1=None, addr2=None, decimal=False):
   words = ' '.join(map(hexstr, words))
 
   for orig_ins, new_ins in rewrite_table:
@@ -136,17 +136,25 @@ def print_insn(cnt, words, op, addr1=None, addr2=None):
       elif nc == 'ADDR2': addr2 = addr2
       else: addr2 = nc
 
+  sb = []
 
-  rv = "{cnt:7X}: {words:14} {op:6}".format(cnt=cnt, words=words, op=op)
+  if decimal:
+    sb.append("{cnt:8d}: ".format(cnt=cnt))
+  else:
+    sb.append("{cnt:7X}: ".format(cnt=cnt))
+  sb.append("{words:14} {op:6}".format(words=words, op=op))
+
   if addr1:
-    rv +=  " {addr1}".format(addr1=addr1)
+    sb.append(" {addr1}".format(addr1=addr1))
   if addr2:
-    rv += ", {addr2}".format(addr2=addr2)
+    sb.append(", {addr2}".format(addr2=addr2))
+
+  rv = ''.join(sb)
   print rv
   return rv
 
 
-def disassemble(stream, depth=None):
+def disassemble(stream, depth=None, decimal=False):
   insn_count = 0
 
   while True:
@@ -165,7 +173,8 @@ def disassemble(stream, depth=None):
         cnt=insn_count,
         op=single_operand[opcode],
         addr1=decode_addr(As, src, stream),
-        words=stream.dump_buffer()
+        words=stream.dump_buffer(),
+        decimal=decimal,
       )
 
     elif (ins >> 13) == 0b001:
@@ -174,8 +183,9 @@ def disassemble(stream, depth=None):
       print_insn(
         cnt=insn_count,
         op=jmp_conditions[cond],
-        addr1="{:+X}".format(jmpoffset(ins)),
-        words=stream.dump_buffer()
+        addr1="{:+d}".format(jmpoffset(ins)) if decimal else ":+X".format(jmpoffset(ins)),
+        words=stream.dump_buffer(),
+        decimal=decimal,
       )
     else:
       # two-operand arithmetic
@@ -192,7 +202,8 @@ def disassemble(stream, depth=None):
         op=opname + ".b" if Bw else opname,
         addr1=decode_addr(As, src, stream),
         addr2= decode_addr(Ad, dst, stream, dst=True),
-        words=stream.dump_buffer()
+        words=stream.dump_buffer(),
+        decimal=decimal,
       )
 
     if insn_count == depth:
@@ -205,7 +216,8 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('tracefile', help='instruction trace file')
   parser.add_argument('-x', '--hex', action="store_true", dest="hex", help='parse hex format')
-  parser.add_argument("--depth", help='terminate disassembly at depth', type=int)
+  parser.add_argument('-d', '--depth', help='terminate disassembly at depth', type=int)
+  parser.add_argument('-c', '--decimal', action='store_true', help='change instruction counts / jump offsets to decimal')
   args = parser.parse_args()
 
   if args.tracefile == '-':
@@ -213,9 +225,9 @@ if __name__ == '__main__':
     data = data.replace('\n', '')
     if args.hex:
       data = bytearray.fromhex(data)
-    disassemble(StreamWrapper(StringIO(data)))
+    disassemble(StreamWrapper(StringIO(data)), depth=args.depth, decimal=args.decimal)
   else:
     with open(args.tracefile, 'r') as f:
       m = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-      disassemble(StreamWrapper(m), depth=args.depth)
+      disassemble(StreamWrapper(m), depth=args.depth, decimal=args.decimal)
 
